@@ -55,7 +55,7 @@
   }
 
   var path = location.pathname, m;
-  var run = (m = path.match(/^\/s\/([0-9A-Za-z-]+)\/?$/)) ? resolveShort(m[1])
+  var run = (m = path.match(/^\/s\/([0-9A-Za-z-]+)\/?$/i)) ? resolveShort(m[1])
           : (m = path.match(/^\/([^\/]+)(\/.*)?$/)) ? resolveAlias(m[1], m[2] || '')
           : Promise.resolve(notFound());
   run.catch(notFound);
