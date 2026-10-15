@@ -3,19 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Page not found — CaRCC</title>
-<script>
-  // Short aliases: carcc.github.io/<alias>/... -> carcc.github.io/<repo>/...
-  // Each alias also gets an <alias>/index.html stub so its root returns 200.
-  var aliases = {
-    'ai-handbook': 'CaRCC-AI-Facilitation-Handbook'
-  };
-  var m = location.pathname.match(/^\/([^\/]+)(.*)$/);
-  var target = m && aliases[m[1].toLowerCase()];
-  if (target) location.replace('/' + target + m[2] + location.search + location.hash);
-</script>
+<title>CaRCC</title>
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/links.js" defer></script>
 </head>
 <body>
 
@@ -28,12 +19,13 @@
 
 <div class="banner">
   <div class="wrap">
-    <h1>Page not found</h1>
-    <p>That page doesn't exist here.</p>
+    <h1 id="status-title">&nbsp;</h1>
+    <p id="status-text">&nbsp;</p>
   </div>
 </div>
 
 <main class="wrap">
+  <noscript><p><strong>Page not found</strong>, or this is a short link, which needs JavaScript to open.</p></noscript>
   <p>Try the <a href="/">CaRCC resources page</a> or <a href="https://carcc.org/">carcc.org</a>.</p>
 </main>
 
