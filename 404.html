@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found — CaRCC</title>
+<script>
+  // Short aliases: carcc.github.io/<alias>/... -> carcc.github.io/<repo>/...
+  // Each alias also gets an <alias>/index.html stub so its root returns 200.
+  var aliases = {
+    'ai-handbook': 'CaRCC-AI-Facilitation-Handbook'
+  };
+  var m = location.pathname.match(/^\/([^\/]+)(.*)$/);
+  var target = m && aliases[m[1].toLowerCase()];
+  if (target) location.replace('/' + target + m[2] + location.search + location.hash);
+</script>
+<link rel="icon" href="/assets/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a href="https://carcc.org/"><img src="/assets/carcc-logo.jpg" alt="Campus Research Computing Consortium (CaRCC)" width="240" height="76"></a>
+    <nav><a href="https://carcc.org/">CaRCC.org</a></nav>
+  </div>
+</header>
+
+<div class="banner">
+  <div class="wrap">
+    <h1>Page not found</h1>
+    <p>That page doesn't exist here.</p>
+  </div>
+</div>
+
+<main class="wrap">
+  <p>Try the <a href="/">CaRCC resources page</a> or <a href="https://carcc.org/">carcc.org</a>.</p>
+</main>
+
+</body>
+</html>
