@@ -134,8 +134,8 @@ def cmd_add(a) -> None:
     append_ledger(a.ledger, {"code": code, "url": url, "id": lid,
                              "created": datetime.date.today().isoformat(), "op": "add"})
     print(f"{SITE}/s/{code}")
-    print(f"  wrote s/d/{lid}.json  (the code is the only key; keep it, it is not stored here)",
-          file=sys.stderr)
+    print(f"  wrote s/d/{lid}.json. The code is the only key and is not stored here: record it in\n"
+          f"  the 'carcc.github.io links' sheet (CaRCC shared drive > Operations).", file=sys.stderr)
 
 
 def cmd_edit(a) -> None:
