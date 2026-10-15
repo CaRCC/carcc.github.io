@@ -28,14 +28,18 @@ Usage (from the repo root; `uv` installs `cryptography` on first run):
   scripts/shortlink.py rm CODE
   scripts/shortlink.py alias NAME URL         # vanity /NAME/ -> URL
   scripts/shortlink.py unalias NAME
+  scripts/shortlink.py record CODE|NAME       # (re)submit a link's record row
   scripts/shortlink.py check                  # validate blobs + aliases
 
-It writes files only; review and commit yourself, with a message that does not name the URL.
+add/edit/alias take --what TEXT and --used-in TEXT for the record. Every change is recorded
+first (see RECORD_FORM); if that fails, nothing is written. It writes files only; review and
+commit yourself, with a message that does not name the URL.
 """
 
 import argparse
 import base64
 import datetime
+import getpass
 import hashlib
 import hmac
 import json
@@ -45,6 +49,9 @@ import secrets
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -62,6 +69,17 @@ ORG = "CaRCC"
 # Top-level names the site itself uses; an alias may not take them.
 RESERVED = {"s", "assets", "scripts", "404", "404.html", "index.html", "aliases.json",
             "readme.md", ".nojekyll", ".git", ".github"}
+
+# The record: every add/edit/rm/alias/unalias is submitted to a Google Form (no sign-in) whose
+# responses land in the private "carcc.github.io links" sheet, so codes are written down
+# somewhere other than this public repo. Anyone could submit junk, which is accepted: a real
+# row's Blob id is the one `show CODE` derives, and its file exists here; junk can't fake that.
+RECORD_FORM = ("https://docs.google.com/forms/d/e/"
+               "1FAIpQLScJKzZEFBS8JACWQdpcLCsfhfZQ6rEdgBdfh8tmXk8Xxq5yJw/formResponse")
+RECORD_FIELDS = {  # Forms questionId (hex) per field; the form posts them as entry.<decimal>
+    "code": "765a5a49", "short": "162aeaef", "id": "5f249f8d", "url": "1c47ef92",
+    "kind": "107b0de2", "op": "428136a7", "what": "28d7a1f2", "used": "47f8b816",
+    "source": "4fa49109"}
 
 
 def normalize(code: str) -> str:
@@ -121,6 +139,37 @@ def append_ledger(path: str | None, entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def source() -> str:
+    """Who and what made a record row, so a junk row (which won't have this) stands out."""
+    r = subprocess.run(["git", "-C", str(ROOT), "config", "user.name"], capture_output=True, text=True)
+    git = f" (git: {r.stdout.strip()})" if r.returncode == 0 and r.stdout.strip() else ""
+    return f"{getpass.getuser()}{git} via shortlink.py"
+
+
+def record(a, **row) -> None:
+    """Submit one row to the record form BEFORE changing any file, so a failed record changes
+    nothing. --no-record skips it (offline use) and says so."""
+    row = {"source": source(), "what": getattr(a, "what", "") or "", "used": getattr(a, "used_in", "") or "",
+           **row}
+    if getattr(a, "no_record", False):
+        print("warning: --no-record, so add this to the links sheet by hand: "
+              + json.dumps(row), file=sys.stderr)
+        return
+    data = urllib.parse.urlencode({f"entry.{int(RECORD_FIELDS[k], 16)}": v for k, v in row.items()}).encode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(RECORD_FORM, data=data), timeout=30) as resp:
+            if resp.status != 200:
+                raise urllib.error.HTTPError(RECORD_FORM, resp.status, "unexpected status", None, None)
+    except urllib.error.HTTPError as e:
+        hint = (" (the form requires sign-in: untick 'Restrict to users in …' in its settings)"
+                if e.code == 401 else "")
+        raise SystemExit(f"recording failed: HTTP {e.code}{hint}; nothing was changed. "
+                         "Retry, or use --no-record and record it by hand.")
+    except urllib.error.URLError as e:
+        raise SystemExit(f"recording failed: {e.reason}; nothing was changed. "
+                         "Retry, or use --no-record and record it by hand.")
+
+
 def cmd_add(a) -> None:
     url = check_url(a.url)
     if a.length < MIN_LENGTH:
@@ -130,18 +179,21 @@ def cmd_add(a) -> None:
         lid, blob = encrypt(code, url)
         if not (DATA / f"{lid}.json").exists():
             break
+    record(a, code=code, short=f"{SITE}/s/{code}", id=lid, url=url, kind="short", op="add")
     write_blob(lid, blob)
     append_ledger(a.ledger, {"code": code, "url": url, "id": lid,
                              "created": datetime.date.today().isoformat(), "op": "add"})
     print(f"{SITE}/s/{code}")
-    print(f"  wrote s/d/{lid}.json. The code is the only key and is not stored here: record it in\n"
-          f"  the 'carcc.github.io links' sheet (CaRCC shared drive > Operations).", file=sys.stderr)
+    rec = "NOT recorded (--no-record)" if a.no_record else "recorded the code in the links sheet"
+    print(f"  wrote s/d/{lid}.json and {rec}. Commit the file with a message that doesn't\n"
+          f"  name the URL.", file=sys.stderr)
 
 
 def cmd_edit(a) -> None:
     code = normalize(a.code)
     lid, _ = decrypt(code)  # must already exist
     _, blob = encrypt(code, check_url(a.url))
+    record(a, code=code, short=f"{SITE}/s/{code}", id=lid, url=a.url, kind="short", op="edit")
     write_blob(lid, blob)
     append_ledger(a.ledger, {"code": code, "url": a.url, "id": lid,
                              "created": datetime.date.today().isoformat(), "op": "edit"})
@@ -156,9 +208,24 @@ def cmd_show(a) -> None:
 
 def cmd_rm(a) -> None:
     code = normalize(a.code)
-    lid, _ = decrypt(code)
+    lid, url = decrypt(code)
+    record(a, code=code, short=f"{SITE}/s/{code}", id=lid, url=url, kind="short", op="rm")
     (DATA / f"{lid}.json").unlink()
     print(f"removed s/d/{lid}.json (it stays in git history)")
+
+
+def cmd_record(a) -> None:
+    """(Re)submit the record row for an existing code or alias: a backfill, or after --no-record."""
+    m = load_aliases()
+    if a.ref.lower() in m:
+        name = a.ref.lower()
+        record(a, short=f"{SITE}/{name}/", url=m[name], kind="alias", op="record")
+        print(f"recorded {SITE}/{name}/")
+        return
+    code = normalize(a.ref)
+    lid, url = decrypt(code)
+    record(a, code=code, short=f"{SITE}/s/{code}", id=lid, url=url, kind="short", op="record")
+    print(f"recorded {SITE}/s/{code}")
 
 
 def load_aliases() -> dict:
@@ -210,6 +277,7 @@ def cmd_alias(a) -> None:
         print(f"warning: couldn't list {ORG} repos (gh); check no repo is named {name!r}", file=sys.stderr)
     elif name in repos:
         raise SystemExit(f"a {ORG} repo is named {name!r}; its Pages site would shadow the alias")
+    record(a, short=f"{SITE}/{name}/", url=url, kind="alias", op="edit" if name in m else "add")
     m[name] = url
     save_aliases(m)
     (ROOT / name).mkdir(exist_ok=True)
@@ -222,6 +290,7 @@ def cmd_unalias(a) -> None:
     m = load_aliases()
     if name not in m:
         raise SystemExit(f"no alias {name!r}")
+    record(a, short=f"{SITE}/{name}/", url=m[name], kind="alias", op="rm")
     del m[name]
     save_aliases(m)
     shutil.rmtree(ROOT / name, ignore_errors=True)
@@ -255,20 +324,31 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     ledger = dict(metavar="PATH", default=os.environ.get("SHORTLINK_LEDGER"),
-                  help="append code/url to this JSON-lines file OUTSIDE the repo (env SHORTLINK_LEDGER)")
+                  help="also append code/url to this JSON-lines file OUTSIDE the repo (env SHORTLINK_LEDGER)")
+
+    def recorded(p, notes=True):
+        """Options for the verbs that submit a row to the record form."""
+        if notes:
+            p.add_argument("--what", metavar="TEXT", help="what the link is, for the record")
+            p.add_argument("--used-in", metavar="TEXT", help="where it's used (a deck, a flyer…)")
+        p.add_argument("--no-record", action="store_true", help="skip the record form (offline); record by hand")
+
     p = sub.add_parser("add", help="new opaque /s/CODE link")
     p.add_argument("url"); p.add_argument("--length", type=int, default=MIN_LENGTH)
-    p.add_argument("--ledger", **ledger); p.set_defaults(func=cmd_add)
+    p.add_argument("--ledger", **ledger); recorded(p); p.set_defaults(func=cmd_add)
     p = sub.add_parser("edit", help="repoint an existing code")
     p.add_argument("code"); p.add_argument("url"); p.add_argument("--ledger", **ledger)
-    p.set_defaults(func=cmd_edit)
+    recorded(p); p.set_defaults(func=cmd_edit)
     p = sub.add_parser("show", help="decrypt a code"); p.add_argument("code"); p.set_defaults(func=cmd_show)
-    p = sub.add_parser("rm", help="delete a code's blob"); p.add_argument("code"); p.set_defaults(func=cmd_rm)
+    p = sub.add_parser("rm", help="delete a code's blob"); p.add_argument("code")
+    recorded(p, notes=False); p.set_defaults(func=cmd_rm)
     p = sub.add_parser("alias", help="public vanity /NAME/ -> URL")
     p.add_argument("name"); p.add_argument("url"); p.add_argument("--force", action="store_true")
-    p.set_defaults(func=cmd_alias)
+    recorded(p); p.set_defaults(func=cmd_alias)
     p = sub.add_parser("unalias", help="remove a vanity alias"); p.add_argument("name")
-    p.set_defaults(func=cmd_unalias)
+    recorded(p, notes=False); p.set_defaults(func=cmd_unalias)
+    p = sub.add_parser("record", help="(re)submit the record row for an existing CODE or alias NAME")
+    p.add_argument("ref", metavar="CODE|NAME"); recorded(p); p.set_defaults(func=cmd_record)
     p = sub.add_parser("check", help="validate blobs and alias stubs"); p.set_defaults(func=cmd_check)
     a = ap.parse_args()
     a.func(a)

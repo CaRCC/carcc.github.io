@@ -63,10 +63,19 @@ Short links need JavaScript, so link previews (Slack, email) show a generic
 CaRCC card rather than the destination. Clicks and QR codes work normally.
 
 The code→URL record lives **outside** this repo, in the **"carcc.github.io
-links"** sheet in the Operations folder of the CaRCC shared drive. That sheet
-is the only place codes are written down, so **add a row whenever you `add`,
-`edit` or `alias`**. For a local copy as well, `add` and `edit` take `--ledger
-PATH` (or `SHORTLINK_LEDGER`), and they refuse a path inside the repo.
+links"** sheet in the Operations folder of the CaRCC shared drive. The script
+keeps it for you: every `add`, `edit`, `rm`, `alias` and `unalias` first submits
+a row to a Google Form whose responses land in that sheet (pass `--what` and
+`--used-in` to describe the link). If recording fails, nothing is changed. Rows
+are append-only, so the latest row for a code is its current state.
+
+The form accepts submissions without sign-in, so junk rows are possible and
+harmless: the site never reads the sheet. A real row carries a `Source` (the
+user and git name that ran the script) and a **Blob id** that `show CODE`
+reproduces and that names a file in `s/d/`. A junk row can't fake that without a
+real code. Use `--no-record` only offline, then run `record CODE` later. For a
+local copy as well, `add` and `edit` take `--ledger PATH` (or
+`SHORTLINK_LEDGER`), and they refuse a path inside the repo.
 
 ## Publishing
 
